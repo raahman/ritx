@@ -12,6 +12,9 @@
   * fixed robtex and ViewDNS.info functions
   * replaced IP resolution with DNS resolution for extracted domains to eleminate old records.
   * improved multi-threading functions
+  * removed support for shared variables threads::shared (slow) 
+  * minor bugs fixed.
+  * major code refactoring.
 =RitX 1.4:=
   * now RitX use the Bing API (faster)
   * added two more options
