@@ -1,3 +1,14 @@
+RitX 1.6:
+  * now RitX uses the new version of Bing Search API (--bing-api)
+  * using random info in User Agent and Referrer headers
+  * using the the ViewDNS.info API service --vd-api (free)
+  * added option --max to set the maximum number of pages to fetch (10)
+  * added Pagesinvestigator.com support (cool website)
+  * updated Cloudflare detection technique
+  * now you can update RitX with Subversion (svn update)
+  * now results are more accurate
+  * made several changes
+
 RitX 1.5:
   * now RitX can check if the website uses CloudFlare.
   * now RitX can retreive more than 50.000 domain
