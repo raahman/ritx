@@ -10,8 +10,9 @@ print "\t|      Coded by r0b10S-12     |\n";
 print "\t+-----------------------------+\n\n\n";
 
 use LWP::Simple;
-use Socket qw(inet_aton);
+use Socket;
 use Getopt::Long;
+
 
 # check missing modules...
 my @Modules = ("threads","LWP::ConnCache","HTTP::Cookies");
@@ -44,7 +45,10 @@ Options:
    -t, --target            Server hostname or IP
    -c, --check             Check extracted domains that are in the same IP address to eleminate cached/old records
    -b, --bing              Save Bing search results to a file
-       --list              List current supported Reverse Ip Lookup websites 
+       --bing-api          Bing API key (http://www.bing.com/developers/)
+       --vd-api            ViewDNS API key (http://ViewDNS.info/api/)
+       --list              List current supported Reverse Ip Lookup websites
+       --max               maximum number of pages to fetch (default:10)              
        --print             Print results
        --timeout=SECONDS   Seconds to wait before timeout connection (default 30)
        --user-agent        Specify User-Agent value to send in HTTP requests
@@ -73,6 +77,11 @@ my %SERV = (
 		URL		=>	"http://www.yougetsignal.com/tools/web-sites-on-web-server/php/get-web-sites-on-web-server-json-data.php",
 		SP		=>	'Yougetsignal()',
 	},
+	Pagesinventory =>{
+		SITE	=>	"Pagesinventory.com",
+		URL		=>	"http://www.pagesinventory.com/ip/%s-%d.html",
+		SP		=>	'Pagesinventory()',
+	},
 	Myiptest =>{
 		SITE	=>	"Myiptest.com",
 		URL		=>	"http://www.myiptest.com/staticpages/index.php/Reverse-IP/%s",
@@ -81,7 +90,6 @@ my %SERV = (
 	WebHosting =>{
 		SITE	=>	"Whois.WebHosting.info",
 		URL		=>	"http://whois.webhosting.info/%s?pi=%d&ob=SLD&oo=DESC",
-		HEAVY	=>	1,
 		SP		=>	'Whoiswebhosting()',
 	},
 	Domainsbyip =>{
@@ -102,7 +110,6 @@ my %SERV = (
 	ewhois =>{
 		SITE	=>	"Ewhois.com",
 		URL		=>	"http://www.ewhois.com/",
-		HEAVY	=>	1,
 		SP		=>	'eWhois()',
 	},
 	Sameip =>{
@@ -113,7 +120,7 @@ my %SERV = (
 	Robtex =>{
 		SITE	=>	"Robtex.com",
 		URL		=>	"http://www.robtex.com/ajax/dns/%s.html",
-		REGEX	=>	"<li><a href\=\"\/dns\/.*?\.html\#shared\" >(.*?)<\/a><\/li>",
+		REGEX	=>	"<span id=\"dns.*?\"><a href=\"\/\/dns\.robtex\.com\/(.*?)\.html\"  >",
 	},
 	Webmax =>{
 		SITE	=>	"Tools.web-max.ca",
@@ -125,11 +132,11 @@ my %SERV = (
 		URL		=>	"http://www.DNStrails.com/tools/lookup.htm?ip=%s&date=recent",
 		REGEX	=>	'date=recent">(.*?)<\/a>\s\(as\sa\swebserver\)',
 	},
-	#Viewdns =>{
-	#	SITE	=>	"Viewdns.info",
-	#	URL		=>	"http://viewdns.info/reverseip/?host=%s",
-	#	SP		=>	"ViewDNS()"
-	#}
+	Viewdns =>{
+		SITE	=>	"Viewdns.info",
+		URL		=>	"http://pro.viewdns.info/reverseip/?host=%s&apikey=%s&output=json",
+		SP		=>	"ViewDNS()"
+	}
 );
 
 my @useragents = ('Mozilla/6.0 (Windows NT 6.2; WOW64; rv:16.0.1) Gecko/20121011 Firefox/16.0.1',
@@ -168,16 +175,19 @@ my @useragents = ('Mozilla/6.0 (Windows NT 6.2; WOW64; rv:16.0.1) Gecko/20121011
 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_4) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.65 Safari/535.11');
 
 # Process options.
-my ($target,$timeout,$threadz,$check,$print,$bing,$proxy,$proxy_auth,$useragent,$filename,$verbose);
+my ($target,$timeout,$threadz,$check,$print,$bing,$proxy,$proxy_auth,$useragent,$filename,$verbose,$max);
 
 if ( @ARGV > 0 )
 {
 	GetOptions( 't|target=s'	=> \$target,
 				'timeout=i'		=> \$timeout,
 				'threads=i' 	=> \$threadz,
+				'max=i'			=> \$max,
 				'c|check'		=> \$check,
 				'print'			=> \$print,
 				'list'	 		=> \&list_serv,
+				'bing-api=s'	=> \$bing_api,
+				'vd-api=s'		=> \$vd_api,
 				'b|bing'		=> \$bing,
 				'proxy=s'		=> \$proxy,
 				'proxy-auth=s'	=> \$proxy_auth,
@@ -222,6 +232,7 @@ else
 	die "[-] Invalid Hostname or Ip address .\n";
 }
 
+
 my $DNSx = gethostbyaddr(inet_aton($target),AF_INET);
 # Check if the target uses CloudFlare service
 my $IPx = unpack("N",inet_aton($target));
@@ -236,7 +247,8 @@ or ($IPx >= 1729546240 and $IPx <= 1729547262)
 or ($IPx >= 2918526976 and $IPx <= 2918531070)
 or ($IPx >= 3340468224 and $IPx <= 3340470270)
 or ($IPx >= 3428692224 and $IPx <= 3428692478)
-or ($IPx >= 3428708352 and $IPx <= 3428708606))
+or ($IPx >= 3428708352 and $IPx <= 3428708606)
+)
 {
 	print "[WARNING] The target uses CloudFlare's service!!\n\n";
 	print "[!] do you wanna continue? [y/n]:";
@@ -244,7 +256,7 @@ or ($IPx >= 3428708352 and $IPx <= 3428708606))
 	chop($choice);
 	if($choice eq "n")
 	{
-		print "\n[*] shutting down!!\n\n";
+		print "\n[*] You made the right choice!!\n\n";
 		exit;
 	}
 	else
@@ -253,23 +265,32 @@ or ($IPx >= 3428708352 and $IPx <= 3428708606))
 	}
 }
 
+
+
 # Global variables
-$bingApiKey  = 'y+WsWbJTyl/93GXbvGXo7kXbB3nxrEz2kExRstXOI84=';#get your own code
+$bingApiKey  = $bing_api || 'y+WsWbJTyl/93GXbvGXo7kXbB3nxrEz2kExRstXOI84=';#get your own code :p
 $VERSION     = '1.6';
 $TMPdir      = "tmp";
 $useragent ||= $useragents[int(rand(scalar(@useragents)))]; #take a random user agent
 $filename  ||= "$target.txt";
 $timeout   ||= 30;
+$max       ||= 10;
 $SIG{INT}    = \&trapsig;
 
 mkdir $TMPdir or die "[-] Cant create tmp directory!\n" if ! -d $TMPdir;
+
+if(!$vd_api)
+{
+	delete $SERV{Viewdns};
+}
+
 
 my $ua = LWP::UserAgent->new(agent => $useragent);
 $ua->timeout($timeout);
 $ua->max_redirect(0);
 $ua->conn_cache(LWP::ConnCache->new());
 $ua->default_header('Referer' => "http://www.google.com/#q=a".int(rand(5)*rand(5)));#fake Referer
-#$ua->add_handler("request_send",  sub { shift->dump; return });
+
 
 $|++;
 if ($proxy)
@@ -293,7 +314,7 @@ if ($proxy)
 	}
 }
 
-print "\n[*] This thing will take a little time so please wait...\n\n";
+print "\n[*] This process will take a little time so be patient...\n\n";
 print "[*] Processing:\n";
 
 ### Functions
@@ -306,7 +327,7 @@ sub list_serv
 		print "    -> $SERV{$X}->{SITE}\n";
 	}
 	print "\n";
-	exit;
+	exit(0);
 }
 
 sub trapsig 
@@ -321,7 +342,7 @@ sub add
 	my $x = lc($_[0]);
 	($x =~ /[\<\"]|freecellphonetracer|reversephonedetective|americanhvacparts|freephonetracer|phone\.addresses|reversephone\.theyellowpages|\.in-addr\.arpa|^\d+(\.|-)\d+(\.|-)/) ? return:0;
 	push(@{$SERV{$X}->{DUMP}},$x) if($verbose);
-	$x =~ s/http(.|s)\:\/\/|\*\.|^www\.|\///;#remove shit
+	$x =~ s/http(.|s)\:\/\/|\*\.|^www\.|\///;#
 	++$SERV{$X}->{NB};
 	push(@result,$x);
 }
@@ -340,7 +361,6 @@ sub Req
 {
 	my ($URL,$data)=@_;
 	my $res;
-	print @headers;
 	if(!$data)
 	{
 		$res = $ua->get($URL);
@@ -376,12 +396,15 @@ sub Yougetsignal
 sub ViewDNS
 {
 	my %hash = ();
-
-
-	$hashs = eval($raw);
-	#print $raw;
-	$repjson =~ s/\"\:/\" =>/g;
-	print $hashs->{response}{domains}[0]{name};#fuck yeah im bad :p
+	$repjson = Req(sprintf($SERV{$X}->{URL},$target,$vd_api));
+	return if($repjson =~ /"domain_count" : "0"/);
+	$repjson =~ s/\" \:/\" =>/g;
+	$hashs = eval($repjson);
+	foreach $s (@{$hashs->{response}{domains}})#yeah it could be done in another way but whatever
+	{
+		add($s->{name});
+	}
+	#$hashs->{response}{domains}[0]{name};
 }
 
 
@@ -401,7 +424,7 @@ sub eWhois
 	my $resu = $browser->post("http://www.ewhois.com/login/",
 	{
 		'data[User][email]'=>'r12xr00tu@gmail.com',
-		'data[User][password]'=>'RitX:::R1tX',
+		'data[User][password]'=>'RitX:::R1tX',#I've made it for you, so don't be an ass
 		'data[User][remember_me]'=>'0'
 	});
 	if(!$resu->header('Location'))
@@ -412,9 +435,35 @@ sub eWhois
 	$browser->get($url, ':content_cb' => \&callback );
 }
 
+sub Pagesinventory
+{
+	for (my $i=0;$i<=$max;$i++)
+	{
+		my $resu = Req(sprintf($SERV{$X}->{URL},$target,$i));
+
+		if ($resu =~ m/<td>\.\.\.<\/td><\/table><div class="ntb-div">/g)
+		{
+			while ($resu =~ m/<td><a href="\/domain\/(.*?)\.html">/g)
+			{			
+				add($1);
+			}
+		}
+		else
+		{
+			while ($resu =~ m/<td><a href="\/domain\/(.*?)\.html">/g)
+			{
+				add($1);
+			}
+			return;
+		}
+	}
+
+}
+
+
 sub Whoiswebhosting
 {
-	for (my $i=1;$i<=100;$i++)
+	for (my $i=1;$i<=$max;$i++)
 	{
 		my $resu = Req(sprintf($SERV{$X}->{URL},$target,$i));
 		if ($resu =~ m/<a href=\"\/.*?\?pi\=\d+\&ob\=SLD\&oo\=DESC\">Next\&nbsp\;\&gt\;\&gt\;<\/a>/g)
@@ -434,32 +483,19 @@ sub Whoiswebhosting
 			{
 				$ERROR = "E2";
 				$SERV{$X}->{NB} = $ERROR;
-				last;
+				return;
 			}
-			last;
 		}
 	}
 }
 
-sub ViewDNS
-{
-	my $resu = Req(sprintf($SERV{$X}->{URL},$target));
-	if($resu =~ m/<table border="1"><tr><td>Domain<\/td><td>Last Resolved Date<\/td><\/tr>(.*?)<\/table><br><\/td><\/tr>/i)
-	{
-		$resu = $1;
-		while($resu =~ m/<tr><td>(.*?)<\/td><td align="center">/gi)
-		{
-			add($1);
-		}
-	}
-}
 
 sub BingAPI
 {
 	my $b;
-	use MIME::Base64;
+	use MIME::Base64 qw(encode_base64);
 
-	for(my $offset=50;$offset<=1000;$offset+=50)
+	for(my $offset=50;$offset<=($max*50);$offset+=50)
 	{
 		$resu = $ua->get(sprintf($SERV{$X}->{URL},$target,$offset),"Authorization" => 'Basic '.encode_base64($bingApiKey.":".$bingApiKey))->content;
 		if ($resu =~ /\_\_next\"\:/)
@@ -474,7 +510,7 @@ sub BingAPI
 		}
 		else
 		{
-			last;
+			return;
 		}
 	}
 }
@@ -569,7 +605,8 @@ foreach $X (keys %SERV)
 die "\n\n[-] Sorry, there is no data were retrieved!\n" if(scalar(@result)<1);
 
 @result = sort(grep { ++$R12{$_} < 2 } @result);
-undef(%R12);
+undef(%R12);#useless
+
 $TOTALNB = scalar(@result);
 
 if($verbose)
@@ -589,9 +626,9 @@ if($bing)
 {
 	if (scalar(@bingtrash)>0)
 	{
-		syswrite(STDOUT,"[+] saving Bing shit...  ");
+		syswrite(STDOUT,"[+] saving Bing results...  ");
 		my $file = "bingresults-$target.txt";
-		open (BING,">$file") or print ("\n[!] Can't create bing shit\n");
+		open (BING,">$file") or print ("\n[!] Can't create bing results\n");
 		print BING "# Genereted By RitX $VERSION\n# Those are all search results from Bing.com ($target).\n\n";
 		foreach (@bingtrash)
 		{
@@ -624,7 +661,7 @@ if ($check)
 				$s+=$t;
 				print "\r passed $s";
 				undef $t;
-				sleep .5;
+				sleep 1;
 			}
 		}
 		close(TMP);
@@ -672,4 +709,3 @@ if ($TOTALNB != 0 and $print)
 }
 print "[+] All domain name results has been saved to ($filename)\n";
 print "[+] All checked domains are saved to ($target-checked.txt)\n" if ($NEWNB>0);
-print "[++] have fun :)\n";
