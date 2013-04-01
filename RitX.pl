@@ -43,11 +43,12 @@ sub usage {
 Usage: perl $b [OPTIONS]
 Options:
    -t, --target            Server hostname or IP
+   -l, --list              list of domains
    -c, --check             Check extracted domains that are in the same IP address to eleminate cached/old records
    -b, --bing              Save Bing search results to a file
        --bing-api          Bing API key (http://www.bing.com/developers/)
        --vd-api            ViewDNS API key (http://ViewDNS.info/api/)
-       --list              List current supported Reverse Ip Lookup websites
+       --show              List current supported Reverse Ip Lookup websites
        --max               maximum number of pages to fetch (default:10)              
        --print             Print results
        --timeout=SECONDS   Seconds to wait before timeout connection (default 30)
@@ -73,7 +74,7 @@ my %SERV = (
 	},
 	Yougetsignal =>{
 		SITE	=>	"Yougetsignal.com",
-		DATA	=>	'remoteAddress',
+		DATA	=>	'remoteAddress=%s&key=&_=',
 		URL		=>	"http://www.yougetsignal.com/tools/web-sites-on-web-server/php/get-web-sites-on-web-server-json-data.php",
 		SP		=>	'Yougetsignal()',
 	},
@@ -185,7 +186,7 @@ if ( @ARGV > 0 )
 				'max=i'			=> \$max,
 				'c|check'		=> \$check,
 				'print'			=> \$print,
-				'list'	 		=> \&list_serv,
+				'shpw'	 		=> \&list_serv,
 				'bing-api=s'	=> \$bing_api,
 				'vd-api=s'		=> \$vd_api,
 				'b|bing'		=> \$bing,
@@ -268,7 +269,7 @@ or ($IPx >= 3428708352 and $IPx <= 3428708606)
 
 
 # Global variables
-$bingApiKey  = $bing_api || 'y+WsWbJTyl/93GXbvGXo7kXbB3nxrEz2kExRstXOI84=';#get your own code :p
+$bingApiKey  = $bing_api || 'y+WsWbJTyl/93GXbvGXo7kXbB3nxrEz2kExRstXOI84=';#get your own key :p
 $VERSION     = '1.6';
 $TMPdir      = "tmp";
 $useragent ||= $useragents[int(rand(scalar(@useragents)))]; #take a random user agent
@@ -289,8 +290,8 @@ my $ua = LWP::UserAgent->new(agent => $useragent);
 $ua->timeout($timeout);
 $ua->max_redirect(0);
 $ua->conn_cache(LWP::ConnCache->new());
-$ua->default_header('Referer' => "http://www.google.com/#q=a".int(rand(5)*rand(5)));#fake Referer
-
+my $fake="http://www.google.com/#q=a".int(rand(5))*rand(5);
+$ua->default_header('Referer' => $fake);#fake Referer
 
 $|++;
 if ($proxy)
@@ -361,16 +362,16 @@ sub Req
 {
 	my ($URL,$data)=@_;
 	my $res;
+
 	if(!$data)
 	{
 		$res = $ua->get($URL);
 	}
 	else
 	{
-		$res = $ua->post($URL, 
-		{
-			$data => $target,
-		});
+		$res = $ua->post($URL,
+		"Content-Type" => 'application/x-www-form-urlencoded; charset=UTF-8',
+		Content => sprintf($data,$target));
 	}
 	if(!$res->is_success)
 	{
@@ -381,8 +382,9 @@ sub Req
 
 sub Yougetsignal
 {
+	$ua->default_header('Referer' => "http://www.yougetsignal.com/tools/web-sites-on-web-server/");
 	my $resu = Req(sprintf($SERV{$X}->{URL},$target),$SERV{$X}->{DATA});
-	while ($resu =~ m/\["(.*?)\"\, \"(1|)\"\]/g)
+	while ($resu =~ /\["(.*?)\"\, \"?\"\]/g)
 	{
 		add($1);
 	}
@@ -391,6 +393,7 @@ sub Yougetsignal
 		$ERROR = "E1";
 		$SERV{$X}->{NB} = $ERROR;
 	}
+	$ua->default_header('Referer' => $fake);
 }
 
 sub ViewDNS
